@@ -9,8 +9,8 @@ import type { ProviderAdapter, ProviderGenerateParams, ProviderGenerateResult } 
 const PROVIDER_NAME = 'gemini';
 const MODEL_CASCADE = [
   'gemini-2.5-flash-lite',
-  'gemini-2.5-flash',
-  'gemini-2.5-pro',
+  'gemini-3-flash',
+  'gemini-3-pro',
 ] as const;
 
 type GeminiModel = (typeof MODEL_CASCADE)[number];
