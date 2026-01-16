@@ -226,6 +226,7 @@ export default function AnalyzePage() {
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
+  const [isShareReady, setIsShareReady] = useState(false);
 
   // Centralized playback control state
   const [playbackCommand, setPlaybackCommand] = useState<PlaybackCommand | null>(null);
@@ -285,15 +286,20 @@ export default function AnalyzePage() {
       return;
     }
 
+    if (!isShareReady) {
+      return;
+    }
+
     const effectiveVideoId = routeVideoId || videoId;
     if (!effectiveVideoId) {
       return;
     }
 
     const normalizedSlugParam = slugParam?.trim() || null;
+    const fallbackTitle = videoInfo?.title || `YouTube Video ${effectiveVideoId}`;
     const derivedSlug = normalizedSlugParam
       ? normalizedSlugParam
-      : (videoInfo?.title ? buildVideoSlug(videoInfo.title, effectiveVideoId) : null);
+      : buildVideoSlug(fallbackTitle, effectiveVideoId);
 
     if (!derivedSlug) {
       return;
@@ -309,7 +315,7 @@ export default function AnalyzePage() {
     const newUrl = `${targetPath}${window.location.search}`;
     window.history.replaceState(window.history.state, '', newUrl);
     seoPathRef.current = targetPath;
-  }, [routeVideoId, videoId, videoInfo?.title, slugParam]);
+  }, [isShareReady, routeVideoId, videoId, videoInfo?.title, slugParam]);
 
   // Use custom hook for timer logic
   const elapsedTime = useElapsedTimer(generationStartTime);
@@ -701,6 +707,7 @@ export default function AnalyzePage() {
       setPlaybackCommand(null);
       setIsPlayingAll(false);
       setPlayAllIndex(0);
+      setIsShareReady(false);
 
       // Reset takeaways-related states
       setTakeawaysContent(null);
@@ -796,6 +803,7 @@ export default function AnalyzePage() {
               setLoadingStage(null);
               setProcessingStartTime(null);
               setSwitchingToLanguage(null);
+              setIsShareReady(true);
 
               backgroundOperation(
                 'load-cached-themes',
@@ -1253,6 +1261,35 @@ export default function AnalyzePage() {
 
       // Rate limit is handled server-side now
       checkRateLimit();
+
+      // Confirm the analysis has been persisted before switching to the shareable /v/ URL
+      backgroundOperation(
+        'confirm-share-ready',
+        async () => {
+          if (!url) return false;
+
+          const cacheCheck = await fetch("/api/check-video-cache", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url })
+          });
+
+          if (!cacheCheck.ok) {
+            return false;
+          }
+
+          const cacheData = await cacheCheck.json();
+          if (cacheData?.cached) {
+            setIsShareReady(true);
+            return true;
+          }
+
+          return false;
+        },
+        (error) => {
+          console.error("Failed to confirm cached analysis for sharing:", error);
+        }
+      );
 
       // NOTE: Video analysis is now saved server-side in /api/video-analysis
       // to prevent client-side cache poisoning attacks

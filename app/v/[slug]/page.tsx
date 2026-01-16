@@ -168,6 +168,17 @@ export default async function VideoPage({ params }: PageProps) {
   const resolved = await resolveVideoFromSlug(supabase, slug);
 
   if (!resolved) {
+    const fallbackVideoId = extractVideoIdFromSlug(slug);
+    const hasCanonicalSuffix = Boolean(
+      fallbackVideoId &&
+      slug.endsWith(fallbackVideoId) &&
+      (slug.length === 11 || slug.slice(-12, -11) === '-')
+    );
+
+    if (fallbackVideoId && hasCanonicalSuffix) {
+      redirect(`/analyze/${fallbackVideoId}`);
+    }
+
     notFound();
   }
 

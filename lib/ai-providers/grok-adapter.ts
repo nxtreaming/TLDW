@@ -4,6 +4,35 @@ import type { ProviderAdapter, ProviderGenerateParams, ProviderGenerateResult } 
 const DEFAULT_MODEL = 'grok-4-1-fast-non-reasoning';
 const PROVIDER_NAME = 'grok';
 
+// JSON Schema properties not supported by Grok's structured outputs
+// See: https://docs.x.ai/docs/guides/structured-outputs
+const UNSUPPORTED_SCHEMA_PROPS = [
+  'minLength', 'maxLength',           // string constraints
+  'minItems', 'maxItems',             // array constraints
+  'minContains', 'maxContains',       // array contains constraints
+  '$schema',                          // draft specifier not needed
+];
+
+/**
+ * Recursively removes JSON Schema properties that Grok doesn't support.
+ * This allows us to use Zod schemas with constraints while still being
+ * compatible with Grok's structured output API.
+ */
+function sanitizeSchemaForGrok(schema: any): any {
+  if (!schema || typeof schema !== 'object') return schema;
+
+  if (Array.isArray(schema)) {
+    return schema.map(sanitizeSchemaForGrok);
+  }
+
+  const result: Record<string, any> = {};
+  for (const [key, value] of Object.entries(schema)) {
+    if (UNSUPPORTED_SCHEMA_PROPS.includes(key)) continue;
+    result[key] = sanitizeSchemaForGrok(value);
+  }
+  return result;
+}
+
 function ensureSchemaName(name?: string) {
   if (name && name.trim().length > 0) {
     return name.trim();
@@ -114,11 +143,12 @@ function buildPayload(params: ProviderGenerateParams) {
   if (params.zodSchema) {
     try {
       const jsonSchema = z.toJSONSchema(params.zodSchema);
+      const sanitizedSchema = sanitizeSchemaForGrok(jsonSchema);
       payload.response_format = {
         type: 'json_schema',
         json_schema: {
           name: ensureSchemaName(params.schemaName),
-          schema: jsonSchema,
+          schema: sanitizedSchema,
         },
       };
     } catch (error) {
